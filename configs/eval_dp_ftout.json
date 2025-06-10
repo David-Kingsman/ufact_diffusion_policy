@@ -1,0 +1,10 @@
+{
+    "name": "dp_eval",
+    "robot_addr1": "192.168.1.100",
+    "robot_addr2": "192.168.1.101",
+    "port": 5555,
+    "obs_horizon": 1,
+    "act_horizon": 10,
+    "gripper_port": "/dev/ttyUSB0",
+    "camera_serial": null
+}
