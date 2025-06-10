@@ -1,0 +1,6 @@
+*.hdf5
+*.pth
+*.npz
+*.pt
+data/
+checkpoints/
