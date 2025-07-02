@@ -1,0 +1,87 @@
+# @package _global_
+defaults:
+  - _self_
+
+name: real_lift_image_abs
+dataset_path: data/metaquest_xarm_dataset.hdf5
+
+# XARM ROBOT CONFIGURATION
+robot_name: xarm6
+robot_dof: 7
+task_name: &task_name xarm_lift
+dataset_type: &dataset_type real
+
+# Camera Configuration (optimized for high resolution)
+image_shape: [3, 224, 224]
+single_camera: true
+camera_names: 
+  - agentview_image
+
+# Observation and Action Dimensions
+lowdim_obs_dim: 21
+action_dim: 7
+
+# Configuration
+rotation_representation: axis_angle
+use_absolute_action: &abs_action true
+
+# Shape Metadata (Robomimic structure)
+shape_meta: &shape_meta
+  obs:
+    agentview_image:
+      shape: [3, 224, 224]  # C, H, W
+      type: rgb
+    robot_eef_pose:
+      shape: [6]
+      type: low_dim
+    robot_joint:
+      shape: [7]
+      type: low_dim
+    robot_joint_vel:
+      shape: [7]
+      type: low_dim
+    gripper:
+      shape: [1]
+      type: low_dim
+  action: 
+    shape: [7]
+    type: low_dim
+
+# Dataset Configuration 
+dataset:
+  _target_: diffusion_policy.dataset.xarm_hdf5_dataset.XarmHDF5Dataset
+  shape_meta: *shape_meta
+  dataset_path: ${dataset_path}
+  horizon: ${horizon}
+  pad_before: ${eval:'${n_obs_steps}-1+${n_latency_steps}'}
+  pad_after: ${eval:'${n_action_steps}-1'}
+  n_obs_steps: ${dataset_obs_steps}
+  abs_action: *abs_action
+  rotation_rep: ${rotation_representation}
+  use_legacy_normalizer: false
+  min_episode_length: 10
+  image_keys: ${camera_names}
+  val_ratio: 0.02  # Reduce validation set ratio
+  seed: 42
+  use_cache: true  # Enable caching for acceleration
+
+# Environment Runner Configuration (for evaluation)
+env_runner:
+  _target_: diffusion_policy.env_runner.xarm_real_runner.XarmRealRunner 
+  shape_meta: *shape_meta
+  output_dir: ${output_dir}
+  n_train: 10
+  n_train_vis: 3
+  train_start_seed: 0
+  n_test: 50  # Increase number of test samples
+  n_test_vis: 6
+  test_start_seed: 100000
+  max_steps: 400
+  n_obs_steps: ${n_obs_steps}
+  n_action_steps: ${n_action_steps}
+  render_obs_key: 'agentview_image'
+  fps: 10
+  crf: 22
+  past_action: ${past_action_visible}
+  abs_action: *abs_action
+  tqdm_interval_sec: 5.0

@@ -1,6 +1,48 @@
+cat > .gitignore << 'EOF'
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+env/
+venv/
+.venv
+.env
+
+# Data files
 *.hdf5
-*.pth
+*.zarr
 *.npz
+*.jpg
+*.png
+*.mp4
+*.avi
+
+# Training outputs
+data/outputs/
+wandb/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model checkpoints
+*.ckpt
+*.pth
 *.pt
-data/
-checkpoints/
+
+# Large demonstration data
+demos_collected/
+data/metaquest_xarm_dataset.hdf5
+EOF
+
+# 添加gitignore并提交
+git add .gitignore
+git commit -m "Add .gitignore for Python and ML project"
