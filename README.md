@@ -1,10 +1,11 @@
-<<<<<<< HEAD
-# UFACTORY DIffusion Policy
+# UFACTORY Diffusion Policy
 
 **Training and Evaluation Experiments for Ufactory Xarm Robots**
 
 ## 1. Installation
+### 1.1. Environement configuration
 We recommend [Mambaforge](https://github.com/conda-forge/miniforge#mambaforge) instead of the standard anaconda distribution for faster installation: 
+
 ```console
 $ mamba env create -f conda_environment_real.yaml
 ```
@@ -14,12 +15,28 @@ but you can use conda as well:
 $ conda env create -f conda_environment_real.yaml
 ```
 
+### 1.2. xArm Python SDK
+
+Download [XArm Python SDK](https://github.com/xArm-Developer/xArm-Python-SDK/tree/a54b2fd1922d3245f1f78c8e518871d4760ead1c)
+
+```bash
+mkdir third_party
+cd third_party
+git clone https://github.com/xArm-Developer/xArm-Python-SDK.git
+cd xArm-Python-SDK
+```
+
+Install from pypi
+
+```bash
+pip install xarm-python-sdk
+```
 
 ## 2. Data format
 
 Collected data is stored in the [`demos_collected`](./demos_collected), with each run in a separate subfolder named `runXXX`, where `XXX` is the run number. Each run folder contains:
 
-### 2.1. Folder Structure
+### 2.1. Folder Structure from the ufactory_teleoperation
 
 ```
 demos_collected/
@@ -45,36 +62,33 @@ demos_collected/
         └── ...
 ```                                                                                                                                                                             
 ### 2.2. Data Postprocessing
-The collected raw data needs to be converted to [HDF5](https://www.hdfgroup.org/solutions/hdf5/) format for training. Change the config in [`post_process_data.py`](./post_process_data.py) to match your data collection setup and execute:
+
+The collected raw data needs to be converted to [Zarr](https://zarr.dev/) to store the data for training. Change the config in [`post_process_data.py`](./post_process_data.py) to match your data collection setup and execute:
+
 
 ```bash
 python post_process_data.py
 ```
 
-After postprocessing, you will have an HDF5 file with the following structure:
-
+After postprocessing, you may see the following structure:
 ```
 data/
-└── metaquest_xarm_dataset.hdf5        # Final training dataset
-    └── data/
-        ├── demo_0/                    # First demonstration episode
-        │   ├── obs/
-        │   │   ├── agentview_image    # RGB camera observations (H, W, 3)
-        │   │   ├── robot_eef_pose     # End-effector pose (6D: x,y,z,rx,ry,rz)
-        │   │   ├── robot_joint        # Joint angles (7D for XARM6)
-        │   │   ├── robot_joint_vel    # Joint velocities (7D)
-        │   │   └── gripper            # Gripper state (1D: open/close)
-        │   └── actions                # Action sequence (7D: 6DOF pose + gripper)
-        ├── demo_1/
-        │   ├── obs/
-        │   └── actions
-        ├── ...
-        └── demo_N/                    # Last demonstration episode
-            ├── obs/
-            └── actions
+└── metaquest_xarm_dataset.zarr        # Final training dataset
+     ├── demo_0/                    # First demonstration episode
+            ├── actions (179, 7) float64          # 7DOF动作 [6DOF位姿 + 夹爪]
+            ├── dones (179,) bool                 # 回合结束标志
+            ├── rewards (179,) float64            # 奖励信号
+            ├── agentview_image (179, 224, 224, 3) uint8  # RGB图像观测
+            ├── gripper (179,) int64              # 夹爪状态
+            ├── label (179,) int64                # 动作标签
+            ├── robot_eef_pose (179, 6) float64   # 末端执行器6D位姿
+            ├── robot_joint (179, 7) float64      # 7个关节角度
+            └── robot_joint_vel (179, 7) float64  # 7个关节速度
+    ├── ...
+    └── demo_N/                    # Last demonstration episode
 ```
 
-The HDF5 dataset format is compatible with the XARM diffusion policy training pipeline and includes all necessary metadata for normalization and sequence sampling.
+The [Zarr](https://zarr.dev/) dataset format is compatible with the XARM diffusion policy training pipeline and includes all necessary metadata for normalization and sequence sampling.
 
 
 ## 3. Training and Eval on a Real Robot
@@ -90,10 +104,13 @@ python train.py --config-name=train_diffusion_unet_real_image_workspace
 # Diffusion Policy
 ./train_dp.sh
 ```
+
 #### train.py
 - **Function**：Training script entry, using Hydra configuration management
-- 
+
+
 #### Configuration System
+
 ```yaml
 # Main Configuration：train_diffusion_unet_real_image_workspace.yaml 
 defaults:
@@ -102,10 +119,11 @@ defaults:
 
 # Task configuration：real_lift_image_abs.yaml  
 dataset:
-  _target_: diffusion_policy.dataset.xarm_hdf5_dataset.XarmHDF5Dataset
+ _target_: diffusion_policy.dataset.real_image_dataset.RealImageDataset
 ```
 
-### 3.2. Eval
+### 3.2. Evaluation
+
 Assuming the training has finished and you have a checkpoint at `data/outputs/blah/checkpoints/latest.ckpt`, launch the evaluation script with:
 
 ```bash
@@ -114,7 +132,6 @@ python eval_real_robot.py -i data/outputs/blah/checkpoints/latest.ckpt -o data/e
 ```
 
 Press "C" to start evaluation (handing control over to the policy). Press "S" to stop the current episode.
-
 
 
 
@@ -127,7 +144,7 @@ To achieve this requirement, we
 1. maintained a simple unified interface between tasks and methods and 
 2. made the implementation of the tasks and the methods independent of each other. 
 
-These design decisions come at the cost of code repetition between the tasks and the methods. However, we believe that the benefit of being able to add/modify task/methods without affecting the remainder and being able understand a task/method by reading the code linearly outweighs the cost of copying and pasting 😊.
+These design decisions come at the cost of code repetition between the tasks and the methods. However, we believe that the benefit of being able to add/modify task/methods without affecting the remainder and being able understand a task/method by reading the code linearly outweighs the cost of copying and pasting.
 
 ### The Split
 On the task side, we have:
@@ -288,11 +305,3 @@ Deoxys vision,
 GRoot
 
 ### debug
-
-
-
-
-
-=======
-# ufact_diffusion_policy
->>>>>>> c0e9a8e5898903a1a4b092e5fdd59f43cc4b2e5e

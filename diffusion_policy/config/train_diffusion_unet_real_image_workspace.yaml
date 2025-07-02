@@ -5,8 +5,8 @@ defaults:
 name: train_diffusion_unet_image
 _target_: diffusion_policy.workspace.train_diffusion_unet_image_workspace.TrainDiffusionUnetImageWorkspace
 
-task_name: ${name}  # 改回使用 task.name
-shape_meta: ${shape_meta}  # 改回使用 task.shape_meta
+task_name: ${name}  
+shape_meta: ${shape_meta}  
 exp_name: "default"
 output_dir: ${hydra:runtime.output_dir}
 
@@ -21,7 +21,7 @@ obs_as_global_cond: true
 
 policy:
   _target_: diffusion_policy.policy.diffusion_unet_image_policy.DiffusionUnetImagePolicy
-  shape_meta: ${shape_meta}  # 改回使用 task.shape_meta
+  shape_meta: ${shape_meta} 
 
   noise_scheduler:
     _target_: diffusers.DDPMScheduler
@@ -35,7 +35,7 @@ policy:
     
   obs_encoder:
     _target_: diffusion_policy.model.vision.multi_image_obs_encoder.MultiImageObsEncoder
-    shape_meta: ${shape_meta}  # 改回使用 task.shape_meta
+    shape_meta: ${shape_meta}  
     rgb_model:
       _target_: diffusion_policy.model.vision.model_getter.get_resnet
       name: resnet18

@@ -46,3 +46,6 @@ EOF
 # 添加gitignore并提交
 git add .gitignore
 git commit -m "Add .gitignore for Python and ML project"
+
+# test
+test

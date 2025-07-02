@@ -2,8 +2,8 @@
 defaults:
   - _self_
 
-name: real_lift_image_abs
-dataset_path: data/metaquest_xarm_dataset.hdf5
+name: real_lift_image_abs_zarr
+dataset_path: data/metaquest_xarm_dataset.zarr
 
 # XARM ROBOT CONFIGURATION
 robot_name: xarm6
@@ -47,9 +47,9 @@ shape_meta: &shape_meta
     shape: [7]
     type: low_dim
 
-# Dataset Configuration 
+# Dataset Configuration for Zarr
 dataset:
-  _target_: diffusion_policy.dataset.xarm_hdf5_dataset.XarmHDF5Dataset
+  _target_: diffusion_policy.dataset.real_image_dataset.RealImageDataset
   shape_meta: *shape_meta
   dataset_path: ${dataset_path}
   horizon: ${horizon}

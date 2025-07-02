@@ -1,11 +1,11 @@
-import h5py
+import zarr
 import torch
 import numpy as np
 from typing import Dict, List
 from diffusion_policy.dataset.base_dataset import BaseImageDataset
 from diffusion_policy.model.common.normalizer import LinearNormalizer
 
-class XarmHDF5Dataset(BaseImageDataset):
+class RealImageDataset(BaseImageDataset):
     def __init__(self, 
                  dataset_path: str,
                  horizon: int = 16,
@@ -32,49 +32,61 @@ class XarmHDF5Dataset(BaseImageDataset):
         self.image_keys = image_keys or ['agentview_image']
         self.val_ratio = val_ratio
         
-        # 加载真实的HDF5数据
-        print(f"Loading real XARM data from: {dataset_path}")
+        # 加载Zarr数据
+        print(f"Loading real XARM data from Zarr: {dataset_path}")
         self.episodes = []
         self.episode_ends = []
         
-        with h5py.File(dataset_path, 'r') as f:
-            demo_keys = [k for k in f['data'].keys() if k.startswith('demo_')]
-            demo_keys.sort()  # 确保顺序
+        # 打开Zarr存储
+        self.store = zarr.DirectoryStore(dataset_path)
+        self.root = zarr.group(store=self.store)
+        
+        if 'data' not in self.root:
+            raise ValueError(f"No 'data' group found in Zarr file: {dataset_path}")
+        
+        data_group = self.root['data']
+        demo_keys = [k for k in data_group.keys() if k.startswith('demo_')]
+        demo_keys.sort()  # 确保顺序
+        
+        cumulative_length = 0
+        for demo_key in demo_keys:
+            demo = data_group[demo_key]
+            episode_length = demo['actions'].shape[0]
             
-            cumulative_length = 0
-            for demo_key in demo_keys:
-                demo = f['data'][demo_key]
-                episode_length = demo['actions'].shape[0]
+            if episode_length >= min_episode_length:
+                # 加载图像数据 (T, H, W, C) -> (T, C, H, W)
+                images = demo['obs']['agentview_image'][:]
+                images = torch.from_numpy(images).float() / 255.0  # 归一化到[0,1]
+                if images.ndim == 4:  # (T, H, W, C)
+                    images = images.permute(0, 3, 1, 2)  # -> (T, C, H, W)
                 
-                if episode_length >= min_episode_length:
-                    # 加载图像数据 (T, H, W, C) -> (T, C, H, W)
-                    images = demo['obs']['agentview_image'][:]
-                    images = torch.from_numpy(images).float() / 255.0  # 归一化到[0,1]
-                    images = images.permute(0, 3, 1, 2)  # (T, H, W, C) -> (T, C, H, W)
-                    
-                    # 加载低维观测数据
-                    robot_eef_pose = torch.from_numpy(demo['obs']['robot_eef_pose'][:]).float()
-                    robot_joint = torch.from_numpy(demo['obs']['robot_joint'][:]).float()
-                    robot_joint_vel = torch.from_numpy(demo['obs']['robot_joint_vel'][:]).float()
-                    gripper = torch.from_numpy(demo['obs']['gripper'][:]).float().unsqueeze(-1)
-                    
-                    # 加载动作数据
-                    actions = torch.from_numpy(demo['actions'][:]).float()
-                    
-                    episode_data = {
-                        'agentview_image': images,
-                        'robot_eef_pose': robot_eef_pose,
-                        'robot_joint': robot_joint,
-                        'robot_joint_vel': robot_joint_vel,
-                        'gripper': gripper,
-                        'actions': actions
-                    }
-                    
-                    self.episodes.append(episode_data)
-                    cumulative_length += episode_length - horizon + 1
-                    self.episode_ends.append(cumulative_length)
-                    
-                    print(f"  {demo_key}: {episode_length} steps")
+                # 加载低维观测数据
+                robot_eef_pose = torch.from_numpy(demo['obs']['robot_eef_pose'][:]).float()
+                robot_joint = torch.from_numpy(demo['obs']['robot_joint'][:]).float()
+                robot_joint_vel = torch.from_numpy(demo['obs']['robot_joint_vel'][:]).float()
+                gripper = torch.from_numpy(demo['obs']['gripper'][:]).float()
+                
+                # 确保gripper是2D tensor
+                if gripper.ndim == 1:
+                    gripper = gripper.unsqueeze(-1)
+                
+                # 加载动作数据
+                actions = torch.from_numpy(demo['actions'][:]).float()
+                
+                episode_data = {
+                    'agentview_image': images,
+                    'robot_eef_pose': robot_eef_pose,
+                    'robot_joint': robot_joint,
+                    'robot_joint_vel': robot_joint_vel,
+                    'gripper': gripper,
+                    'actions': actions
+                }
+                
+                self.episodes.append(episode_data)
+                cumulative_length += episode_length - horizon + 1
+                self.episode_ends.append(cumulative_length)
+                
+                print(f"  {demo_key}: {episode_length} steps")
         
         print(f"Loaded {len(self.episodes)} episodes, {cumulative_length} training samples")
         
@@ -83,7 +95,7 @@ class XarmHDF5Dataset(BaseImageDataset):
         self.total_samples = cumulative_length
         
     def get_normalizer(self, **kwargs) -> LinearNormalizer:
-        print("Computing normalizer from real data...")
+        print("Computing normalizer from real Zarr data...")
         
         # 收集所有动作和观测数据
         all_actions = []
@@ -142,7 +154,7 @@ class XarmHDF5Dataset(BaseImageDataset):
                 'offset': torch.nn.Parameter(-(obs_max + obs_min) / obs_range, requires_grad=False)
             })
         
-        print("Normalizer computed successfully!")
+        print("Zarr normalizer computed successfully!")
         return normalizer
         
     def get_all_actions(self) -> torch.Tensor:
@@ -193,7 +205,7 @@ class XarmHDF5Dataset(BaseImageDataset):
         
     def get_validation_dataset(self):
         # 创建验证数据集（使用最后的episodes）
-        val_dataset = XarmHDF5Dataset(
+        val_dataset = RealImageDataset(
             dataset_path=self.dataset_path,
             horizon=self.horizon,
             pad_before=self.pad_before,
@@ -224,3 +236,11 @@ class XarmHDF5Dataset(BaseImageDataset):
         
         print(f"Validation dataset: {len(val_dataset.episodes)} episodes, {cumulative_length} samples")
         return val_dataset
+        
+    def __del__(self):
+        # 清理Zarr资源
+        if hasattr(self, 'store'):
+            try:
+                self.store.close()
+            except:
+                pass
