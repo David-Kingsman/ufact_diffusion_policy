@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # UFACTORY DIffusion Policy
 
 **Training and Evaluation Experiments for Ufactory Xarm Robots**
@@ -292,3 +293,6 @@ GRoot
 
 
 
+=======
+# ufact_diffusion_policy
+>>>>>>> c0e9a8e5898903a1a4b092e5fdd59f43cc4b2e5e
