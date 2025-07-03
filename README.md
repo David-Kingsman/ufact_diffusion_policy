@@ -99,7 +99,14 @@ To train a Diffusion Policy, launch training [`train.py`](./train.py) with confi
 
 ```bash
 # Core function: start the training process
+# Training (default: absolute action):
 python train.py --config-name=train_diffusion_unet_real_image_workspace
+
+# Relative action training:
+python train.py --config-name=train_diffusion_unet_real_image_workspace +action_type=relative
+
+# Absolute action training:
+python train.py --config-name=train_diffusion_unet_real_image_workspace +action_type=absolute
 
 # Diffusion Policy
 ./train_dp.sh
@@ -129,11 +136,21 @@ Policy: DiffusionUnetImagePolicy
 
 ### 3.2. Evaluation
 
+1. (Optional) Refer to `vcamera_server_ip` and `vcamera_server_port` in the task config file and start the corresponding vcamera server
+   ```bash
+   # launch camera_node
+   python camera_node.py --camera-ref rs_wrist_0 --use-rgb --img-w 640 --img-h 480 --fps 30 --visualization
+   ```
+ 2. Modify [eval.sh](eval.sh) to set the task and model you want to evaluate
+   and run the command in separate terminals.
 Assuming the training has finished and you have a checkpoint at `data/outputs/blah/checkpoints/latest.ckpt`, launch the evaluation script with:
 
 ```bash
 # Core function: start the evaluation process
-python eval_real_robot.py -i data/outputs/blah/checkpoints/latest.ckpt -o data/eval_pusht_real --robot_ip 192.168.0.204
+   # start camera node launcher
+   python camera_node_launcher.py task=[task_config_file_name]
+   # start inference
+   python eval_real_ufact_robots.py --config-name=eval_diffusion_unet_real_image_workspace ckpt_path=path/to/your_ckpt.pth
 ```
 
 Press "C" to start evaluation (handing control over to the policy). Press "S" to stop the current episode.
@@ -163,57 +180,42 @@ On the policy side, we have:
 * `Workspace`: manages the life-cycle of training and evaluation (interleaved) of a method. 
 * `config/<workspace_name>.yaml`: contains all information needed to construct `Policy` and `Workspace`.
 
-### The Interface
-#### Low Dim
-A [`LowdimPolicy`](./diffusion_policy/policy/base_lowdim_policy.py) takes observation dictionary:
-- `"obs":` Tensor of shape `(B,To,Do)`
+## 5. The Interface
 
-and predicts action dictionary:
-- `"action": ` Tensor of shape `(B,Ta,Da)`
+### 5.1. Image Policy & Dataset
 
-A [`LowdimDataset`](./diffusion_policy/dataset/base_dataset.py) returns a sample of dictionary:
-- `"obs":` Tensor of shape `(To, Do)`
-- `"action":` Tensor of shape `(Ta, Da)`
+A [`DiffusionUnetImagePolicy`](.diffusion_policy/policy/diffusion_unet_image_policy.py) (subclass of BaseImagePolicy) takes an observation dictionary, e.g.:
 
-Its `get_normalizer` method returns a [`LinearNormalizer`](./diffusion_policy/model/common/normalizer.py) with keys `"obs","action"`.
+"agentview_image": Tensor of shape (B, To, C, H, W)
+"robot_eef_pose": Tensor of shape (B, To, 7)
+"robot_joint": Tensor of shape (B, To, N)
+"robot_joint_vel": Tensor of shape (B, To, N)
+"gripper": Tensor of shape (B, To, 1)
+and predicts an action dictionary:
 
-The `Policy` handles normalization on GPU with its copy of the `LinearNormalizer`. The parameters of the `LinearNormalizer` is saved as part of the `Policy`'s weights checkpoint.
+"action": Tensor of shape (B, Ta, Da)
+(where Da=7 for 6D pose + gripper, Ta is action horizon)
 
-#### Image
-A [`ImagePolicy`](./diffusion_policy/policy/base_image_policy.py) takes observation dictionary:
-- `"key0":` Tensor of shape `(B,To,*)`
-- `"key1":` Tensor of shape e.g. `(B,To,H,W,3)` ([0,1] float32)
+A [`RealImageDataset`](.diffusion_policy/dataset/real_image_dataset.py) returns a sample dictionary:
 
-and predicts action dictionary:
-- `"action": ` Tensor of shape `(B,Ta,Da)`
+"obs": Dict with keys above, each of shape (To, ...)
+"action": Tensor of shape (Ta, Da)
+Its get_normalizer method returns a LinearNormalizer with keys "agentview_image", "robot_eef_pose", "robot_joint", "robot_joint_vel", "gripper", and "action".
 
-A [`ImageDataset`](./diffusion_policy/dataset/base_dataset.py) returns a sample of dictionary:
-- `"obs":` Dict of
-    - `"key0":` Tensor of shape `(To, *)`
-    - `"key1":` Tensor fo shape `(To,H,W,3)`
-- `"action":` Tensor of shape `(Ta, Da)`
+The DiffusionUnetImagePolicy handles normalization on GPU with its own copy of the LinearNormalizer. The parameters of the LinearNormalizer are saved as part of the policy's checkpoint.
 
-Its `get_normalizer` method returns a [`LinearNormalizer`](./diffusion_policy/model/common/normalizer.py) with keys `"key0","key1","action"`.
+### 5.2. Action Representation
 
-#### Example
-```
-To = 3
-Ta = 4
-T = 6
-|o|o|o|
-| | |a|a|a|a|
-|o|o|
-| |a|a|a|a|a|
-| | | | |a|a|
-```
-Terminology in the paper: `varname` in the codebase
-- Observation Horizon: `To|n_obs_steps`
-- Action Horizon: `Ta|n_action_steps`
-- Prediction Horizon: `T|horizon`
+The action can be either absolute (default) or relative (set use_relative_action: true in config or +action_type=relative in command line).
+Relative action: All actions in a chunk are represented with respect to the last frame of the chunk (first suggested in [UMI](https://umi-gripper.github.io/))。
+The dataset and policy will automatically switch between absolute and relative action modes according to the config, no manual intervention needed.
 
-The classical (e.g. MDP) single step observation/action formulation is included as a special case where `To=1` and `Ta=1`.
 
-## 🔩 Key Components
+
+
+
+
+## 6. Key Components
 ### `Workspace`
 A `Workspace` object encapsulates all states and code needed to run an experiment. 
 * Inherits from [`BaseWorkspace`](./diffusion_policy/workspace/base_workspace.py).
@@ -304,9 +306,13 @@ Read and imitate:
 
 
 # Acknowledgement
-Our repo was built on: 
-Deoxys, 
-Deoxys vision, 
-GRoot
+Our work is built upon
+[Diffusion Policy](https://github.com/real-stanford/diffusion_policy),
+[Stable Diffusion](https://github.com/CompVis/stable-diffusion),
+[UMI](https://github.com/real-stanford/universal_manipulation_interface)
+Thanks for their great work!
+
+
+
 
 ### debug

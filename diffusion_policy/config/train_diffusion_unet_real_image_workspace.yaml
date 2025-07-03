@@ -2,6 +2,7 @@ defaults:
 - _self_
 - task: real_lift_image_abs
 
+# basic configuration
 name: train_diffusion_unet_image
 _target_: diffusion_policy.workspace.train_diffusion_unet_image_workspace.TrainDiffusionUnetImageWorkspace
 
@@ -10,6 +11,7 @@ shape_meta: ${shape_meta}
 exp_name: "default"
 output_dir: ${hydra:runtime.output_dir}
 
+# Absolute action configuration
 horizon: 16
 n_obs_steps: 2
 n_action_steps: 8
@@ -19,6 +21,7 @@ past_action_visible: false
 keypoint_visible_rate: 1.0
 obs_as_global_cond: true
 
+# policy configuration
 policy:
   _target_: diffusion_policy.policy.diffusion_unet_image_policy.DiffusionUnetImagePolicy
   shape_meta: ${shape_meta} 
@@ -58,8 +61,10 @@ policy:
   n_groups: 8
   cond_predict_scale: true
 
+# dataset configuration
 dataset: ${dataset}
 
+# ema、dataloader、optimizer、training、logging、checkpoint、multi_run
 ema:
   _target_: diffusion_policy.model.diffusion.ema_model.EMAModel
   update_after_step: 0
@@ -132,7 +137,8 @@ checkpoint:
 multi_run:
   run_dir: data/outputs/${now:%Y.%m.%d}/${now:%H.%M.%S}_real_lift_image_abs
   wandb_name_base: ${now:%Y.%m.%d-%H.%M.%S}_real_lift_image_abs
-  
+
+# Hydra configuration for job management
 hydra:
   job:
     override_dirname: real_lift_image_abs

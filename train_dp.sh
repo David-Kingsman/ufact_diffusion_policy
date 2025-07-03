@@ -5,4 +5,5 @@ python train.py \
     dataset_path=data/metaquest_xarm_dataset.zarr \
     name=xarm_metaquest_diffusion \
     logging.mode=online \
-    logging.project=xarm_metaquest_diffusion
+    logging.project=xarm_metaquest_diffusion \
+    +action_type=relative  #  +action_type=absolute, change to absolute if needed

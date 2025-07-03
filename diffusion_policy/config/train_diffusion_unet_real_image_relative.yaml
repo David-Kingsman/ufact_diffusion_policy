@@ -12,7 +12,6 @@ output_dir: ${hydra:runtime.output_dir}
 
 # relative action configuration
 use_relative_action: true  # relative action mode
-relative_type: "6D"        # 6D means relative pose, "pos" means relative position
 
 # Other parameters are the same as the absolute action version
 horizon: 16

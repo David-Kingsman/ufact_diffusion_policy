@@ -78,3 +78,4 @@ dependencies:
     - transforms3d==0.4.2
     - easydict==1.13
     - reids ==6.2.0
+    - pure-python-adb

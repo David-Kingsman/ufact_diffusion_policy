@@ -110,7 +110,14 @@ class RealImageDataset(BaseImageDataset):
         self.episode_ends = np.array(self.episode_ends)
         self.total_samples = cumulative_length
     
-    def abs2relative(self, ee_gripper_data, type="6D"):
+
+    '''
+    We use relative end-effector (EE) trajectory for action representation, which has been proven to be effective even in complex tasks by UMI.
+    Specifically, instead of directly calculating the delta action between consecutive frames (may lead to large compounding errors), 
+    we convert an absolute pose trajectory to a relative one by calculating the relative transformation with respect to a base frame. 
+    In our setting, the base frame is the last observation frame in an action chunk.
+    '''
+    def abs2relative(self, ee_gripper_data, type="relative"):
         """
         Convert absolute actions to relative actions
         Args:
@@ -120,35 +127,29 @@ class RealImageDataset(BaseImageDataset):
             relative_pose: numpy array [T, 7] relative action
         """
         from scipy.spatial.transform import Rotation
-        
-        if type == "6D":
-            # Use first action as reference
-            initial_xyz = ee_gripper_data[0, :3]
-            initial_axis_angle = ee_gripper_data[0, 3:6]
-            initial_quat = Rotation.from_rotvec(initial_axis_angle)
-            
-            # Calculate relative position
-            relative_pose = ee_gripper_data.copy()
-            relative_pose[:, :3] -= initial_xyz
-            
-            # Calculate relative rotation
-            for i in range(relative_pose.shape[0]):
-                abs_axis_angle = ee_gripper_data[i, 3:6]
-                abs_quat = Rotation.from_rotvec(abs_axis_angle)
-                
-                quat_diff = abs_quat * initial_quat.inv()
-                relative_pose[i, 3:6] = quat_diff.as_rotvec()
-            
-            # Gripper state remains unchanged
-            
-        elif type == "pos":
-            # Only process position
-            initial_xyz = ee_gripper_data[0, :3]
-            relative_pose = ee_gripper_data.copy()
-            relative_pose[:, :3] -= initial_xyz
-        else:
-            raise NotImplementedError(f"Relative action type {type} not implemented")
 
+    def abs2relative(self, ee_gripper_data):
+        """
+        Convert absolute actions to relative actions (6D, base frame is last frame).
+        Args:
+            ee_gripper_data: numpy array [T, 7] (x,y,z,rx,ry,rz,gripper)
+        Returns:
+            relative_pose: numpy array [T, 7] relative action
+        """
+        from scipy.spatial.transform import Rotation
+
+        initial_xyz = ee_gripper_data[-1, :3]
+        initial_axis_angle = ee_gripper_data[-1, 3:6]
+        initial_quat = Rotation.from_rotvec(initial_axis_angle)
+        relative_pose = ee_gripper_data.copy()
+        for i in range(relative_pose.shape[0]):
+            # Position: subtract and rotate to ref frame
+            relative_pose[i, :3] = initial_quat.inv().apply(relative_pose[i, :3] - initial_xyz)
+            # Rotation: get relative rotation
+            rot_quat_i = Rotation.from_rotvec(ee_gripper_data[i, 3:6])
+            quat_diff = initial_quat.inv() * rot_quat_i
+            relative_pose[i, 3:6] = quat_diff.as_rotvec()
+        # Gripper unchanged
         return relative_pose
     
     def get_normalizer(self, **kwargs) -> LinearNormalizer:
@@ -165,7 +166,7 @@ class RealImageDataset(BaseImageDataset):
         
         # if use_relative_action:
         if self.use_relative_action:
-            print(f"Computing normalization statistics for relative actions, type: {self.relative_type}")
+            print(f"Computing normalization statistics for relative actions")
 
             # Sample relative actions for statistics
             for episode in self.episodes:
@@ -178,7 +179,7 @@ class RealImageDataset(BaseImageDataset):
                     action_chunk = episode_actions[start_idx:start_idx + self.horizon]
                     
                     # Convert to relative action
-                    relative_actions = self.abs2relative(action_chunk, type=self.relative_type)
+                    relative_actions = self.abs2relative(action_chunk)
                     all_actions.append(torch.from_numpy(relative_actions).float())
                 
                 # Observation data unchanged
@@ -263,7 +264,7 @@ class RealImageDataset(BaseImageDataset):
                 # Convert if using relative action
                 if self.use_relative_action:
                     action_sequence = torch.from_numpy(
-                        self.abs2relative(action_sequence.numpy(), type=self.relative_type)
+                        self.abs2relative(action_sequence.numpy())
                     ).float()
                 
                 all_actions.append(action_sequence)
@@ -299,7 +300,7 @@ class RealImageDataset(BaseImageDataset):
         # Convert if using relative action
         if self.use_relative_action:
             actions = torch.from_numpy(
-                self.abs2relative(actions.numpy(), type=self.relative_type)
+                self.abs2relative(actions.numpy())
             ).float()
         
         batch = {
