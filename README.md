@@ -120,6 +120,11 @@ defaults:
 # Task configuration：real_lift_image_abs.yaml  
 dataset:
  _target_: diffusion_policy.dataset.real_image_dataset.RealImageDataset
+
+# Core components
+Data path: data/metaquest_xarm_dataset.zarr 
+Workspace: TrainDiffusionUnetImageWorkspace
+Policy: DiffusionUnetImagePolicy 
 ```
 
 ### 3.2. Evaluation

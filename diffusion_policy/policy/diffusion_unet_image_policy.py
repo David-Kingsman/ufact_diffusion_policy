@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, reduce
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
-
+import numpy as np
 from diffusion_policy.model.common.normalizer import LinearNormalizer
 from diffusion_policy.policy.base_image_policy import BaseImagePolicy
 from diffusion_policy.model.diffusion.conditional_unet1d import ConditionalUnet1D
@@ -27,10 +27,17 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
             kernel_size=5,
             n_groups=8,
             cond_predict_scale=True,
+            # 🔄 Add relative action parameters
+            use_relative_action=False,
+            relative_type="6D",
             # parameters passed to step
             **kwargs):
         super().__init__()
 
+        # 🔄 Relative action configuration
+        self.use_relative_action = use_relative_action
+        self.relative_type = relative_type
+        
         # parse shapes
         action_shape = shape_meta['action']['shape']
         assert len(action_shape) == 1
@@ -79,6 +86,58 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
             num_inference_steps = noise_scheduler.config.num_train_timesteps
         self.num_inference_steps = num_inference_steps
     
+    def relative2absolute(self, relative_actions, obs_dict):
+        """
+        Convert relative actions to absolute actions for robot execution
+        Args:
+            relative_actions: [T, 7] 相对动作序列
+            obs_dict: 观测字典，包含当前EE位姿
+        Returns:
+            absolute_actions: [T, 7] 绝对动作序列
+        """
+        from scipy.spatial.transform import Rotation
+        
+        # Get current EE pose as reference
+        current_ee_pose = obs_dict['robot_eef_pose'][-1]  # 最后一个观测
+        
+        if isinstance(current_ee_pose, torch.Tensor):
+            current_ee_pose = current_ee_pose.cpu().numpy()
+        if isinstance(relative_actions, torch.Tensor):
+            relative_actions = relative_actions.cpu().numpy()
+        
+        if self.relative_type == "6D":
+            base_xyz = current_ee_pose[:3]
+            base_axis_angle = current_ee_pose[3:6]
+            base_quat = Rotation.from_rotvec(base_axis_angle)
+            
+            absolute_actions = []
+            
+            for rel_action in relative_actions:
+                # Position: reference position + relative position
+                abs_xyz = base_xyz + rel_action[:3]
+                
+                # Rotation: reference rotation * relative rotation
+                rel_quat = Rotation.from_rotvec(rel_action[3:6])
+                abs_quat = base_quat * rel_quat
+                abs_axis_angle = abs_quat.as_rotvec()
+                
+                # Gripper state remains unchanged
+                abs_gripper = rel_action[6]
+                
+                abs_action = np.concatenate([abs_xyz, abs_axis_angle, [abs_gripper]])
+                absolute_actions.append(abs_action)
+                
+        elif self.relative_type == "pos":
+            base_xyz = current_ee_pose[:3]
+            
+            absolute_actions = []
+            for rel_action in relative_actions:
+                abs_action = rel_action.copy()
+                abs_action[:3] = base_xyz + rel_action[:3]
+                absolute_actions.append(abs_action)
+        
+        return torch.from_numpy(np.array(absolute_actions)).float()
+    
     # ========= inference  ============
     def conditional_sample(self, 
             condition_data, condition_mask,
@@ -118,7 +177,6 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
         trajectory[condition_mask] = condition_data[condition_mask]        
 
         return trajectory
-
 
     def predict_action(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """
@@ -179,10 +237,36 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
         end = start + self.n_action_steps
         action = action_pred[:,start:end]
         
-        result = {
-            'action': action,
-            'action_pred': action_pred
-        }
+        # 🔄 Handle relative action conversion if enabled
+        if self.use_relative_action:
+            # Save original relative action predictions
+            relative_action_pred = action_pred.clone()
+            relative_action = action.clone()
+            
+            # Convert to absolute action
+            absolute_actions = []
+            for b in range(B):
+                abs_action = self.relative2absolute(
+                    action_pred[b].cpu().numpy(), 
+                    {k: v[b] for k, v in obs_dict.items()}
+                )
+                absolute_actions.append(abs_action)
+            
+            action_pred = torch.stack(absolute_actions).to(device)
+            action = action_pred[:,start:end]
+            
+            result = {
+                'action': action,
+                'action_pred': action_pred,
+                'action_pred_relative': relative_action_pred,
+                'action_relative': relative_action
+            }
+        else:
+            result = {
+                'action': action,
+                'action_pred': action_pred
+            }
+        
         return result
 
     # ========= training  ============

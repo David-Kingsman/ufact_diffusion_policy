@@ -18,6 +18,9 @@ class RealImageDataset(BaseImageDataset):
                  min_episode_length: int = 10,
                  image_keys: List[str] = None,
                  val_ratio: float = 0.15,
+                 # Add relative action parameters
+                 use_relative_action: bool = False,
+                 relative_type: str = "6D",
                  **kwargs):
         
         self.dataset_path = dataset_path
@@ -32,12 +35,25 @@ class RealImageDataset(BaseImageDataset):
         self.image_keys = image_keys or ['agentview_image']
         self.val_ratio = val_ratio
         
-        # 加载Zarr数据
+        # Relative action configuration
+        self.use_relative_action = use_relative_action
+        self.relative_type = relative_type
+        
+        # Disable absolute action if using relative action
+        if use_relative_action:
+            self.abs_action = False
+
+        # Load Zarr data
         print(f"Loading real XARM data from Zarr: {dataset_path}")
+        if use_relative_action:
+            print(f"Use relative action, type: {relative_type}")
+        else:
+            print(f"Using absolute action mode")
+
         self.episodes = []
         self.episode_ends = []
-        
-        # 打开Zarr存储
+
+        # Open Zarr store
         self.store = zarr.DirectoryStore(dataset_path)
         self.root = zarr.group(store=self.store)
         
@@ -46,31 +62,31 @@ class RealImageDataset(BaseImageDataset):
         
         data_group = self.root['data']
         demo_keys = [k for k in data_group.keys() if k.startswith('demo_')]
-        demo_keys.sort()  # 确保顺序
-        
+        demo_keys.sort()  # Ensure order
+
         cumulative_length = 0
         for demo_key in demo_keys:
             demo = data_group[demo_key]
             episode_length = demo['actions'].shape[0]
             
             if episode_length >= min_episode_length:
-                # 加载图像数据 (T, H, W, C) -> (T, C, H, W)
+                # Load image data (T, H, W, C) -> (T, C, H, W)
                 images = demo['obs']['agentview_image'][:]
-                images = torch.from_numpy(images).float() / 255.0  # 归一化到[0,1]
+                images = torch.from_numpy(images).float() / 255.0  # Normalize to [0,1]
                 if images.ndim == 4:  # (T, H, W, C)
                     images = images.permute(0, 3, 1, 2)  # -> (T, C, H, W)
-                
-                # 加载低维观测数据
+
+                # Load low-dimensional observation data
                 robot_eef_pose = torch.from_numpy(demo['obs']['robot_eef_pose'][:]).float()
                 robot_joint = torch.from_numpy(demo['obs']['robot_joint'][:]).float()
                 robot_joint_vel = torch.from_numpy(demo['obs']['robot_joint_vel'][:]).float()
                 gripper = torch.from_numpy(demo['obs']['gripper'][:]).float()
-                
-                # 确保gripper是2D tensor
+
+                # Ensure gripper is 2D tensor
                 if gripper.ndim == 1:
                     gripper = gripper.unsqueeze(-1)
-                
-                # 加载动作数据
+
+                # Load action data
                 actions = torch.from_numpy(demo['actions'][:]).float()
                 
                 episode_data = {
@@ -89,15 +105,56 @@ class RealImageDataset(BaseImageDataset):
                 print(f"  {demo_key}: {episode_length} steps")
         
         print(f"Loaded {len(self.episodes)} episodes, {cumulative_length} training samples")
-        
-        # 创建索引映射
+
+        # Create index mapping
         self.episode_ends = np.array(self.episode_ends)
         self.total_samples = cumulative_length
+    
+    def abs2relative(self, ee_gripper_data, type="6D"):
+        """
+        Convert absolute actions to relative actions
+        Args:
+            ee_gripper_data: numpy array [T, 7] (x,y,z,rx,ry,rz,gripper)
+            type: "6D" (position+rotation) or "pos" (position only)
+        Returns:
+            relative_pose: numpy array [T, 7] relative action
+        """
+        from scipy.spatial.transform import Rotation
         
+        if type == "6D":
+            # Use first action as reference
+            initial_xyz = ee_gripper_data[0, :3]
+            initial_axis_angle = ee_gripper_data[0, 3:6]
+            initial_quat = Rotation.from_rotvec(initial_axis_angle)
+            
+            # Calculate relative position
+            relative_pose = ee_gripper_data.copy()
+            relative_pose[:, :3] -= initial_xyz
+            
+            # Calculate relative rotation
+            for i in range(relative_pose.shape[0]):
+                abs_axis_angle = ee_gripper_data[i, 3:6]
+                abs_quat = Rotation.from_rotvec(abs_axis_angle)
+                
+                quat_diff = abs_quat * initial_quat.inv()
+                relative_pose[i, 3:6] = quat_diff.as_rotvec()
+            
+            # Gripper state remains unchanged
+            
+        elif type == "pos":
+            # Only process position
+            initial_xyz = ee_gripper_data[0, :3]
+            relative_pose = ee_gripper_data.copy()
+            relative_pose[:, :3] -= initial_xyz
+        else:
+            raise NotImplementedError(f"Relative action type {type} not implemented")
+
+        return relative_pose
+    
     def get_normalizer(self, **kwargs) -> LinearNormalizer:
         print("Computing normalizer from real Zarr data...")
         
-        # 收集所有动作和观测数据
+        # collect all actions and observations
         all_actions = []
         all_obs = {
             'robot_eef_pose': [],
@@ -106,33 +163,70 @@ class RealImageDataset(BaseImageDataset):
             'gripper': []
         }
         
-        for episode in self.episodes:
-            all_actions.append(episode['actions'])
-            for key in all_obs.keys():
-                all_obs[key].append(episode[key])
+        # if use_relative_action:
+        if self.use_relative_action:
+            print(f"Computing normalization statistics for relative actions, type: {self.relative_type}")
+
+            # Sample relative actions for statistics
+            for episode in self.episodes:
+                episode_actions = episode['actions'].numpy()
+                episode_length = len(episode_actions)
+                
+                # Sample multiple times per episode
+                for _ in range(min(50, episode_length - self.horizon)):
+                    start_idx = np.random.randint(0, episode_length - self.horizon + 1)
+                    action_chunk = episode_actions[start_idx:start_idx + self.horizon]
+                    
+                    # Convert to relative action
+                    relative_actions = self.abs2relative(action_chunk, type=self.relative_type)
+                    all_actions.append(torch.from_numpy(relative_actions).float())
+                
+                # Observation data unchanged
+                for key in all_obs.keys():
+                    all_obs[key].append(episode[key])
+        else:
+            # Absolute action processing
+            for episode in self.episodes:
+                all_actions.append(episode['actions'])
+                for key in all_obs.keys():
+                    all_obs[key].append(episode[key])
         
-        # 合并数据
+        # Merge data
         all_actions = torch.cat(all_actions, dim=0)
         for key in all_obs.keys():
             all_obs[key] = torch.cat(all_obs[key], dim=0)
         
-        # 创建归一化器
+        # Create normalizer
         normalizer = LinearNormalizer()
+
+        # Action normalization parameters (considering different statistical properties of relative actions)
+        if self.use_relative_action:
+            # Relative actions usually have smaller ranges, use mean and std normalization
+            action_mean = all_actions.mean(dim=0)
+            action_std = all_actions.std(dim=0)
+            action_std = torch.clamp(action_std, min=1e-8)
+            
+            normalizer.params_dict['action'] = torch.nn.ParameterDict({
+                'min': torch.nn.Parameter(action_mean - 3 * action_std, requires_grad=False),
+                'max': torch.nn.Parameter(action_mean + 3 * action_std, requires_grad=False),
+                'scale': torch.nn.Parameter(1.0 / action_std, requires_grad=False),
+                'offset': torch.nn.Parameter(-action_mean / action_std, requires_grad=False)
+            })
+        else:
+            # Absolute actions use min-max normalization
+            action_min = all_actions.min(dim=0)[0]
+            action_max = all_actions.max(dim=0)[0]
+            action_range = action_max - action_min
+            action_range = torch.clamp(action_range, min=1e-8)
+            
+            normalizer.params_dict['action'] = torch.nn.ParameterDict({
+                'min': torch.nn.Parameter(action_min, requires_grad=False),
+                'max': torch.nn.Parameter(action_max, requires_grad=False),
+                'scale': torch.nn.Parameter(2.0 / action_range, requires_grad=False),
+                'offset': torch.nn.Parameter(-(action_max + action_min) / action_range, requires_grad=False)
+            })
         
-        # 动作归一化参数
-        action_min = all_actions.min(dim=0)[0]
-        action_max = all_actions.max(dim=0)[0]
-        action_range = action_max - action_min
-        action_range = torch.clamp(action_range, min=1e-8)
-        
-        normalizer.params_dict['action'] = torch.nn.ParameterDict({
-            'min': torch.nn.Parameter(action_min, requires_grad=False),
-            'max': torch.nn.Parameter(action_max, requires_grad=False),
-            'scale': torch.nn.Parameter(2.0 / action_range, requires_grad=False),
-            'offset': torch.nn.Parameter(-(action_max + action_min) / action_range, requires_grad=False)
-        })
-        
-        # 图像观测（不需要归一化，已经在[0,1]范围）
+        # Image observations (no normalization needed, already in [0,1] range)
         normalizer.params_dict['agentview_image'] = torch.nn.ParameterDict({
             'min': torch.nn.Parameter(torch.zeros(1), requires_grad=False),
             'max': torch.nn.Parameter(torch.ones(1), requires_grad=False),
@@ -140,7 +234,7 @@ class RealImageDataset(BaseImageDataset):
             'offset': torch.nn.Parameter(torch.zeros(1), requires_grad=False)
         })
         
-        # 低维观测归一化参数
+        # Low-dimensional observation normalization parameters
         for key, obs_data in all_obs.items():
             obs_min = obs_data.min(dim=0)[0]
             obs_max = obs_data.max(dim=0)[0]
@@ -153,22 +247,30 @@ class RealImageDataset(BaseImageDataset):
                 'scale': torch.nn.Parameter(2.0 / obs_range, requires_grad=False),
                 'offset': torch.nn.Parameter(-(obs_max + obs_min) / obs_range, requires_grad=False)
             })
-        
-        print("Zarr normalizer computed successfully!")
+
+        action_type = "Relative Action" if self.use_relative_action else "Absolute Action"
+        print(f"Zarr {action_type} Normalizer computation completed!")
         return normalizer
         
     def get_all_actions(self) -> torch.Tensor:
         all_actions = []
         for episode in self.episodes:
-            # 创建滑动窗口的动作序列
+            # Create sliding window action sequences
             actions = episode['actions']
             for start_idx in range(len(actions) - self.horizon + 1):
                 action_sequence = actions[start_idx:start_idx + self.horizon]
+                
+                # Convert if using relative action
+                if self.use_relative_action:
+                    action_sequence = torch.from_numpy(
+                        self.abs2relative(action_sequence.numpy(), type=self.relative_type)
+                    ).float()
+                
                 all_actions.append(action_sequence)
         return torch.stack(all_actions)
         
     def _get_episode_index(self, idx):
-        """根据全局索引获取对应的episode和episode内索引"""
+        """Get the corresponding episode and episode index based on the global index"""
         episode_idx = np.searchsorted(self.episode_ends, idx + 1)
         if episode_idx == 0:
             start_idx = idx
@@ -183,13 +285,22 @@ class RealImageDataset(BaseImageDataset):
         episode_idx, start_idx = self._get_episode_index(idx)
         episode = self.episodes[episode_idx]
         
-        # 获取观测序列 (n_obs_steps)
+        # Get observation sequence (n_obs_steps)
         obs_start = start_idx
         obs_end = start_idx + self.n_obs_steps
         
-        # 获取动作序列 (horizon)
+        # Get action sequence (horizon)
         action_start = start_idx
         action_end = start_idx + self.horizon
+        
+        # Get action data
+        actions = episode['actions'][action_start:action_end]
+        
+        # Convert if using relative action
+        if self.use_relative_action:
+            actions = torch.from_numpy(
+                self.abs2relative(actions.numpy(), type=self.relative_type)
+            ).float()
         
         batch = {
             'obs': {
@@ -199,12 +310,12 @@ class RealImageDataset(BaseImageDataset):
                 'robot_joint_vel': episode['robot_joint_vel'][obs_start:obs_end],
                 'gripper': episode['gripper'][obs_start:obs_end]
             },
-            'action': episode['actions'][action_start:action_end]
+            'action': actions
         }
         return batch
         
     def get_validation_dataset(self):
-        # 创建验证数据集（使用最后的episodes）
+        # Create validation dataset (using last episodes)
         val_dataset = RealImageDataset(
             dataset_path=self.dataset_path,
             horizon=self.horizon,
@@ -216,14 +327,17 @@ class RealImageDataset(BaseImageDataset):
             use_legacy_normalizer=self.use_legacy_normalizer,
             min_episode_length=self.min_episode_length,
             image_keys=self.image_keys,
-            val_ratio=self.val_ratio
+            val_ratio=self.val_ratio,
+            # Pass relative action parameters
+            use_relative_action=self.use_relative_action,
+            relative_type=self.relative_type
         )
         
-        # 只保留一部分作为验证集
+        # Keep only part as validation set
         num_val_episodes = max(1, int(len(self.episodes) * self.val_ratio))
         val_dataset.episodes = self.episodes[-num_val_episodes:]
         
-        # 重新计算验证集的索引
+        # Recalculate validation set indices
         cumulative_length = 0
         val_dataset.episode_ends = []
         for episode in val_dataset.episodes:
@@ -233,12 +347,13 @@ class RealImageDataset(BaseImageDataset):
         
         val_dataset.episode_ends = np.array(val_dataset.episode_ends)
         val_dataset.total_samples = cumulative_length
-        
-        print(f"Validation dataset: {len(val_dataset.episodes)} episodes, {cumulative_length} samples")
+
+        action_type = "Relative Action" if self.use_relative_action else "Absolute Action"
+        print(f"Validation Dataset ({action_type}): {len(val_dataset.episodes)} episodes, {cumulative_length} samples")
         return val_dataset
         
     def __del__(self):
-        # 清理Zarr资源
+        # Clean up Zarr resources
         if hasattr(self, 'store'):
             try:
                 self.store.close()

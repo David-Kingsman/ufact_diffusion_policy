@@ -74,5 +74,7 @@ dependencies:
 
 # Additional dependencies 
   #####
-    - loguru==0.5.3
-    - transforms3d==0.3.1
+    - loguru==0.8.3
+    - transforms3d==0.4.2
+    - easydict==1.13
+    - reids ==6.2.0

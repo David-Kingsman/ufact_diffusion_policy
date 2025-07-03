@@ -2,34 +2,32 @@
 defaults:
   - _self_
 
-name: real_lift_image_abs
+name: real_lift_image_rel
 dataset_path: data/metaquest_xarm_dataset.zarr
 
-# XARM ROBOT CONFIGURATION
-robot_name: xarm6
-robot_dof: 7   
-task_name: &task_name xarm_lift
-dataset_type: &dataset_type real
+# required XARM robot configuration
+use_relative_action: true
+relative_type: "6D"  # or "pos"
 
-# Camera Configuration (optimized for high resolution)
-image_shape: [3, 224, 224]   # C, H, W
-single_camera: true          # Use single camera for simplicity
-camera_names: 
-  - agentview_image
+# dataset configuration
+dataset:
+  _target_: diffusion_policy.dataset.real_image_dataset.RealImageDataset
+  dataset_path: ${dataset_path}
+  horizon: 16
+  pad_before: 1
+  pad_after: 7
+  n_obs_steps: 2
+  abs_action: false  # Disable absolute action
+  use_relative_action: ${use_relative_action}
+  relative_type: ${relative_type}
+  seed: 42
+  val_ratio: 0.02
 
-# Observation and Action Dimensions
-lowdim_obs_dim: 21
-action_dim: 7
-
-# Configuration
-rotation_representation: axis_angle
-use_absolute_action: &abs_action true
-
-# Shape Metadata (Robomimic structure)
-shape_meta: &shape_meta
+# shape_meta configuration remains unchanged
+shape_meta:
   obs:
     agentview_image:
-      shape: [3, 224, 224]  # C, H, W
+      shape: [3, 224, 224]
       type: rgb
     robot_eef_pose:
       shape: [6]
@@ -43,11 +41,11 @@ shape_meta: &shape_meta
     gripper:
       shape: [1]
       type: low_dim
-  action: 
-    shape: [7]
+  action:
+    shape: [7]  # still 7D, but now it's relative action
     type: low_dim
 
-# Dataset Configuration for Zarr
+  # Dataset Configuration for Zarr
 dataset:
   _target_: diffusion_policy.dataset.real_image_dataset.RealImageDataset
   shape_meta: *shape_meta
@@ -85,24 +83,24 @@ env_runner:
   past_action: ${past_action_visible}
   abs_action: *abs_action
   tqdm_interval_sec: 5.0
-  # XARM Configuration
+  # XARM hardware configuration
   xarm_ip: "192.168.1.235"  # Update to your XARM actual IP
   camera_indices: [0]       # Camera device index
   eval_episodes: 10         # Number of episodes for each evaluation
 
-  # Control Parameters
+  # Control parameters
   control_fps: 20.0
   inference_fps: 10.0
   action_horizon: ${horizon}
   use_relative_action: false
 
-  # Safety Parameters
-  position_limits: 
+  # Safety parameters
+  position_limits:
     - [200, -400, 100]    # xyz min (mm)
     - [700, 400, 600]     # xyz max (mm)
   velocity_limit: 100.0   # mm/s
 
-  # Visualization Parameters
+  # Visualization parameters
   enable_video_recording: true
   save_obs: true
 

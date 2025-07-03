@@ -33,7 +33,8 @@ OmegaConf.register_new_resolver("eval", eval, replace=True)
 
 class TrainDiffusionUnetImageWorkspace(BaseWorkspace):
     include_keys = ['global_step', 'epoch']
-
+   
+    # This workspace is used to train a diffusion model for image policies
     def __init__(self, cfg: OmegaConf, output_dir=None):
         super().__init__(cfg, output_dir=output_dir)
 
@@ -43,14 +44,14 @@ class TrainDiffusionUnetImageWorkspace(BaseWorkspace):
         np.random.seed(seed)
         random.seed(seed)
 
-        # configure model
+        # configure model 
         self.model: DiffusionUnetImagePolicy = hydra.utils.instantiate(cfg.policy)
 
         self.ema_model: DiffusionUnetImagePolicy = None
         if cfg.training.use_ema:
             self.ema_model = copy.deepcopy(self.model)
 
-        # configure training state
+        # configure training state 
         self.optimizer = hydra.utils.instantiate(
             cfg.optimizer, params=self.model.parameters())
 
