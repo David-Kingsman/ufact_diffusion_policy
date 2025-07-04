@@ -204,22 +204,21 @@ class XarmRealRunner(BaseImageRunner):
             try:
                 ret, frame = cap.read()
                 if ret:
-                    # Resize and normalize
                     frame = cv2.resize(frame, (224, 224))
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     frame = frame.astype(np.float32) / 255.0
                     frame = frame.transpose(2, 0, 1)  # HWC -> CHW
-                    
-                    # Use camera names from configuration
+
                     if i == 0:
                         images['agentview_image'] = frame
+                        images['agentview0_image'] = frame  # 可选：主视角也叫 agentview0_image
+                    elif i == 1:
+                        images['agentview1_image'] = frame
                     else:
                         images[f'camera_{i}'] = frame
                 else:
                     logger.warning(f"Failed to capture from camera {i}")
-                    # Use black image as fallback
                     images['agentview_image'] = np.zeros((3, 224, 224), dtype=np.float32)
-                    
             except Exception as e:
                 logger.error(f"Error capturing from camera {i}: {e}")
                 images['agentview_image'] = np.zeros((3, 224, 224), dtype=np.float32)

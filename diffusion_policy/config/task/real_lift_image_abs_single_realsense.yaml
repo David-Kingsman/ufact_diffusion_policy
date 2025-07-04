@@ -15,7 +15,7 @@ dataset_type: &dataset_type real
 image_shape: [3, 224, 224]   # C, H, W
 single_camera: true          # Use single camera for simplicity
 camera_names: 
-  - agentview_image
+  - agentview1_image
 
 # Observation and Action Dimensions
 lowdim_obs_dim: 21

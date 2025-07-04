@@ -44,9 +44,9 @@ class RealImageDataset(BaseImageDataset):
         # Load Zarr data
         print(f"Loading real XARM data from Zarr: {dataset_path}")
         if use_relative_action:
-            print(f"Use relative action, type: {relative_type}")
+            print("Using relative action mode")
         else:
-            print(f"Using absolute action mode")
+            print("Using absolute action mode")
 
         self.episodes = []
         self.episode_ends = []
@@ -63,17 +63,40 @@ class RealImageDataset(BaseImageDataset):
         demo_keys.sort()  # Ensure order
 
         cumulative_length = 0
+        # single camera support
+        # for demo_key in demo_keys:
+        #     demo = data_group[demo_key]
+        #     episode_length = demo['actions'].shape[0]
+            
+        #     if episode_length >= min_episode_length:
+        #         # Load image data (T, H, W, C) -> (T, C, H, W)
+        #         images = demo['obs']['agentview_image'][:]
+        #         images = torch.from_numpy(images).float() / 255.0  # Normalize to [0,1]
+        #         if images.ndim == 4:  # (T, H, W, C)
+        #             images = images.permute(0, 3, 1, 2)  # -> (T, C, H, W)
+        # Mutiple cameras support 
         for demo_key in demo_keys:
             demo = data_group[demo_key]
             episode_length = demo['actions'].shape[0]
             
             if episode_length >= min_episode_length:
-                # Load image data (T, H, W, C) -> (T, C, H, W)
-                images = demo['obs']['agentview_image'][:]
-                images = torch.from_numpy(images).float() / 255.0  # Normalize to [0,1]
-                if images.ndim == 4:  # (T, H, W, C)
-                    images = images.permute(0, 3, 1, 2)  # -> (T, C, H, W)
+                # Load image data for all specified cameras
+                images = {}
+                for cam_key in self.image_keys:
+                    if cam_key in demo['obs']:
+                        img = demo['obs'][cam_key][:]
+                        img = torch.from_numpy(img).float() / 255.0
+                        if img.ndim == 4:
+                            img = img.permute(0, 3, 1, 2)
+                        images[cam_key] = img
 
+                # 自动补全 agentview_image
+                if 'agentview_image' not in images:
+                    if 'agentview1_image' in images:
+                        images['agentview_image'] = images['agentview1_image']
+                    elif 'agentview0_image' in images:
+                        images['agentview_image'] = images['agentview0_image']
+                
                 # Load low-dimensional observation data
                 robot_eef_pose = torch.from_numpy(demo['obs']['robot_eef_pose'][:]).float()
                 robot_joint = torch.from_numpy(demo['obs']['robot_joint'][:]).float()
@@ -88,7 +111,7 @@ class RealImageDataset(BaseImageDataset):
                 actions = torch.from_numpy(demo['actions'][:]).float()
                 
                 episode_data = {
-                    'agentview_image': images,
+                    **images,  # directly include all images
                     'robot_eef_pose': robot_eef_pose,
                     'robot_joint': robot_joint,
                     'robot_joint_vel': robot_joint_vel,
@@ -301,6 +324,16 @@ class RealImageDataset(BaseImageDataset):
                 self.abs2relative(actions.numpy())
             ).float()
         
+        # batch = {
+        #     'obs': {
+        #         'agentview_image': episode['agentview_image'][obs_start:obs_end],
+        #         'robot_eef_pose': episode['robot_eef_pose'][obs_start:obs_end],
+        #         'robot_joint': episode['robot_joint'][obs_start:obs_end],
+        #         'robot_joint_vel': episode['robot_joint_vel'][obs_start:obs_end],
+        #         'gripper': episode['gripper'][obs_start:obs_end]
+        #     },
+        #     'action': actions
+        # }
         batch = {
             'obs': {
                 'agentview_image': episode['agentview_image'][obs_start:obs_end],
@@ -327,9 +360,7 @@ class RealImageDataset(BaseImageDataset):
             min_episode_length=self.min_episode_length,
             image_keys=self.image_keys,
             val_ratio=self.val_ratio,
-            # Pass relative action parameters
-            use_relative_action=self.use_relative_action,
-            relative_type=self.relative_type
+            use_relative_action=self.use_relative_action
         )
         
         # Keep only part as validation set

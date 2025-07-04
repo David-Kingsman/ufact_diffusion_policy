@@ -2,13 +2,16 @@
 defaults:
   - _self_
 
-name: real_lift_image_rel_single_realsense
+name: real_lift_image_rel_realsense_webcam
 dataset_path: data/metaquest_xarm_dataset.zarr
 
 use_relative_action: true
 abs_action: false  
 
+# Multi-camera configuration
 camera_names:
+camera_names:
+  - agentview0_image
   - agentview1_image
 
 dataset:
@@ -29,7 +32,10 @@ dataset:
 
 shape_meta:
   obs:
-    agentview_image:
+    agentview0_image:
+      shape: [3, 224, 224]
+      type: rgb
+    agentview1_image:
       shape: [3, 224, 224]
       type: rgb
     robot_eef_pose:
@@ -61,14 +67,14 @@ env_runner:
   max_steps: 400
   n_obs_steps: ${n_obs_steps}
   n_action_steps: ${n_action_steps}
-  render_obs_key: 'agentview_image'
+  render_obs_key: 'agentview0_image'  # or 'agentview1_image'
   fps: 10
   crf: 22
   past_action: ${past_action_visible}
   abs_action: ${abs_action}
   tqdm_interval_sec: 5.0
   xarm_ip: "192.168.1.235"
-  camera_indices: [0]
+  camera_indices: [0, 6]  # corresponding to rs_1-agentview1_image and webcam_0-agentview0_image
   eval_episodes: 10
   control_fps: 20.0
   inference_fps: 10.0

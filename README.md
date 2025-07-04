@@ -24,9 +24,10 @@ mkdir third_party
 cd third_party
 git clone https://github.com/xArm-Developer/xArm-Python-SDK.git
 cd xArm-Python-SDK
+Install from pypi
 ```
 
-Install from pypi
+Install from pypi from [XArm Python SDK](https://github.com/xArm-Developer/xArm-Python-SDK/tree/a54b2fd1922d3245f1f78c8e518871d4760ead1c)
 
 ```bash
 pip install xarm-python-sdk
@@ -38,7 +39,7 @@ Collected data is stored in the [`demos_collected`](./demos_collected), with eac
 
 ### 2.1. Folder Structure from the ufactory_teleoperation
 
-```
+```yaml
 demos_collected/
 ├── run001/
 │   ├── config.json                   # Configuration file
@@ -58,7 +59,7 @@ demos_collected/
         ├── color_000000001.jpg        # run001: i.e. Image 1-50
         ├── color_000000002.jpg
         ├── ...
-        ├── color_000000051.jpg        # run002: i.e. Image 51-120
+        ├── color_000000101.jpg        # run002: i.e. Image 101-200
         └── ...
 ```                                                                                                                                                                             
 ### 2.2. Data Postprocessing
@@ -70,21 +71,46 @@ python post_process_data.py
 ```
 
 After postprocessing, you may see the following structure:
-```
-data/
-└── metaquest_xarm_dataset.zarr        # Final training dataset
-     ├── demo_0/                    # First demonstration episode
-            ├── actions (179, 7) float64          # 7DOF动作 [6DOF位姿 + 夹爪]
-            ├── dones (179,) bool                 # 回合结束标志
-            ├── rewards (179,) float64            # 奖励信号
-            ├── agentview_image (179, 224, 224, 3) uint8  # RGB图像观测
-            ├── gripper (179,) int64              # 夹爪状态
-            ├── label (179,) int64                # 动作标签
-            ├── robot_eef_pose (179, 6) float64   # 末端执行器6D位姿
-            ├── robot_joint (179, 7) float64      # 7个关节角度
-            └── robot_joint_vel (179, 7) float64  # 7个关节速度
-    ├── ...
-    └── demo_N/                    # Last demonstration episode
+```yaml
+# For dual camera configuration (webcam+realsense)
+data/metaquest_dataset.zarr/
+└── data/
+├── demo_0/
+│   ├── obs/
+│   │   ├── agentview0_image  (N, 224, 224, 3)  # 相机0图片
+│   │   ├── agentview1_image  (N, 224, 224, 3)  # 相机1图片
+│   │   ├── agentview_image   (N, 224, 224, 3)  # 主视角，内容等于 agentview0_image
+│   │   ├── gripper           (N,)
+│   │   ├── label             (N,)
+│   │   ├── robot_eef_pose    (N, 6)
+│   │   ├── robot_joint       (N, 7)
+│   │   └── robot_joint_vel   (N, 7)
+│   ├── actions               (N, 7)
+│   ├── dones                 (N,)
+│   └── rewards               (N,)
+├── demo_1/
+│   └── ...
+└── demo_2/
+└── ...
+
+# For single realsense configuration
+data/metaquest_dataset.zarr/
+└── data/
+├── demo_0/
+│   ├── obs/
+│   │   ├── agentview1_image      (N, 224, 224, 3)   # 单相机realsense图片
+│   │   ├── gripper               (N,)
+│   │   ├── label                 (N,)
+│   │   ├── robot_eef_pose        (N, 6)
+│   │   ├── robot_joint           (N, 7)
+│   │   └── robot_joint_vel       (N, 7)
+│   ├── actions                   (N, 7)
+│   ├── dones                     (N,)
+│   └── rewards                   (N,)
+├── demo_1/
+│   └── ...
+└── demo_2/
+└── ...
 ```
 
 The [Zarr](https://zarr.dev/) dataset format is compatible with the XARM diffusion policy training pipeline and includes all necessary metadata for normalization and sequence sampling.
@@ -94,7 +120,7 @@ The [Zarr](https://zarr.dev/) dataset format is compatible with the XARM diffusi
 Make sure your Ufactory XArm robot is running and accepting command from its network interface (emergency stop button within reach at all time), and your RealSense cameras plugged in to your workstation (tested with `realsense-viewer`)
 
 ### 3.1. Training
-To train a Diffusion Policy, launch training [`train.py`](./train.py) with config:
+To train a Diffusion Policy, launch training [`train.py`](./train.py) using Hydra configuration management with config, serving as a training script entry
 
 ```bash
 # Core function: start the training process
@@ -111,11 +137,8 @@ python train.py --config-name=train_diffusion_unet_real_image_workspace +action_
 ./train_dp.sh
 ```
 
-#### train.py
-- **Function**：Training script entry, using Hydra configuration management
 
-
-#### Configuration System
+### 3.2. Configuration System
 
 ```yaml
 # Main Configuration：train_diffusion_unet_real_image_workspace.yaml 
@@ -133,7 +156,7 @@ Workspace: TrainDiffusionUnetImageWorkspace
 Policy: DiffusionUnetImagePolicy 
 ```
 
-### 3.2. Evaluation
+### 3.3. Evaluation
 
 1. (Optional) Refer to `vcamera_server_ip` and `vcamera_server_port` in the task config file and start the corresponding vcamera server
    ```bash
@@ -141,8 +164,9 @@ Policy: DiffusionUnetImagePolicy
    python camera_node.py --camera-ref rs_1 --use-rgb --img-w 640 --img-h 480 --fps 30 --visualization
 
    # Webcam example
-   python camera_node.py --camera-ref webcam_2 --use-rgb --visualization --img-h 1080 --img-w 1920 --fps 30 --publish-freq 50 --camera-address '/dev/video2'
-# RealSense camera example
+   python camera_node.py --camera-ref webcam_0 --use-rgb --visualization --img-h 1080 --img-w 1920 --fps 30 --publish-freq 50 --camera-address '/dev/video2'
+   
+### 3.4.  RealSense camera example
 python camera_node.py --camera-ref rs_1 --use-rgb  --visualization --img-h 480 --img-w 640 --fps 30 --publish-freq 50
 
    ```

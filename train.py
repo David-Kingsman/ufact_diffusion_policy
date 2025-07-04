@@ -37,6 +37,7 @@ def main(cfg: OmegaConf):
     
     # Set the action type in the configuration   
     OmegaConf.set_struct(cfg, False)
+    # Set the action type in the configuration
     if 'dataset' in cfg:
         cfg.dataset.abs_action = not use_relative_action
         cfg.dataset.use_relative_action = use_relative_action
