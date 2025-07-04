@@ -1,0 +1,86 @@
+# @package _global_
+defaults:
+  - _self_
+
+name: real_lift_image_rel_realsense_webcam
+dataset_path: data/metaquest_xarm_dataset.zarr
+
+use_relative_action: true
+
+# Multi-camera configuration
+camera_names:
+  - rs_1
+  - webcam_2
+
+dataset:
+  _target_: diffusion_policy.dataset.real_image_dataset.RealImageDataset
+  dataset_path: ${dataset_path}
+  horizon: 16
+  pad_before: 1
+  pad_after: 7
+  n_obs_steps: 2
+  abs_action: false
+  use_relative_action: ${use_relative_action}
+  seed: 42
+  val_ratio: 0.02
+  image_keys: ${camera_names}
+  use_legacy_normalizer: false
+  min_episode_length: 10
+  use_cache: true
+
+shape_meta:
+  obs:
+    rs_1:
+      shape: [3, 224, 224]
+      type: rgb
+    webcam_2:
+      shape: [3, 224, 224]
+      type: rgb
+    robot_eef_pose:
+      shape: [6]
+      type: low_dim
+    robot_joint:
+      shape: [7]
+      type: low_dim
+    robot_joint_vel:
+      shape: [7]
+      type: low_dim
+    gripper:
+      shape: [1]
+      type: low_dim
+  action:
+    shape: [7]
+    type: low_dim
+
+env_runner:
+  _target_: diffusion_policy.env_runner.xarm_real_runner.XarmRealRunner
+  shape_meta: ${shape_meta}
+  output_dir: ${output_dir}
+  n_train: 10
+  n_train_vis: 3
+  train_start_seed: 0
+  n_test: 50
+  n_test_vis: 6
+  test_start_seed: 100000
+  max_steps: 400
+  n_obs_steps: ${n_obs_steps}
+  n_action_steps: ${n_action_steps}
+  render_obs_key: 'rs_1'  # or 'webcam_2'
+  fps: 10
+  crf: 22
+  past_action: ${past_action_visible}
+  abs_action: ${abs_action}
+  tqdm_interval_sec: 5.0
+  xarm_ip: "192.168.1.235"
+  camera_indices: [0, 2]  # corresponding to rs_1 and webcam_2
+  eval_episodes: 10
+  control_fps: 20.0
+  inference_fps: 10.0
+  action_horizon: ${horizon}
+  use_relative_action: false
+  position_limits:
+    - [200, -400, 100]
+    - [700, 400, 600]
+  velocity_limit: 100.0
+  enable_video_recording: true
+  save_obs: true

@@ -29,15 +29,13 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
             cond_predict_scale=True,
             # 🔄 Add relative action parameters
             use_relative_action=False,
-            relative_type="6D",
             # parameters passed to step
             **kwargs):
         super().__init__()
 
         # 🔄 Relative action configuration
         self.use_relative_action = use_relative_action
-        self.relative_type = relative_type
-        
+
         # parse shapes
         action_shape = shape_meta['action']['shape']
         assert len(action_shape) == 1
@@ -90,51 +88,38 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
         """
         Convert relative actions to absolute actions for robot execution
         Args:
-            relative_actions: [T, 7] 相对动作序列
-            obs_dict: 观测字典，包含当前EE位姿
+            relative_actions: [T, 7] relative action sequence
+            obs_dict: observation dictionary containing current EE pose
         Returns:
-            absolute_actions: [T, 7] 绝对动作序列
+            absolute_actions: [T, 7] absolute action sequence
         """
         from scipy.spatial.transform import Rotation
         
         # Get current EE pose as reference
-        current_ee_pose = obs_dict['robot_eef_pose'][-1]  # 最后一个观测
+        current_ee_pose = obs_dict['robot_eef_pose'][-1]  # Assuming this is a tensor of shape [7] (x, y, z, axis_angle)
         
         if isinstance(current_ee_pose, torch.Tensor):
             current_ee_pose = current_ee_pose.cpu().numpy()
         if isinstance(relative_actions, torch.Tensor):
             relative_actions = relative_actions.cpu().numpy()
         
-        if self.relative_type == "6D":
-            base_xyz = current_ee_pose[:3]
-            base_axis_angle = current_ee_pose[3:6]
-            base_quat = Rotation.from_rotvec(base_axis_angle)
-            
-            absolute_actions = []
-            
-            for rel_action in relative_actions:
-                # Position: reference position + relative position
-                abs_xyz = base_xyz + rel_action[:3]
-                
-                # Rotation: reference rotation * relative rotation
-                rel_quat = Rotation.from_rotvec(rel_action[3:6])
-                abs_quat = base_quat * rel_quat
-                abs_axis_angle = abs_quat.as_rotvec()
-                
-                # Gripper state remains unchanged
-                abs_gripper = rel_action[6]
-                
-                abs_action = np.concatenate([abs_xyz, abs_axis_angle, [abs_gripper]])
-                absolute_actions.append(abs_action)
-                
-        elif self.relative_type == "pos":
-            base_xyz = current_ee_pose[:3]
-            
-            absolute_actions = []
-            for rel_action in relative_actions:
-                abs_action = rel_action.copy()
-                abs_action[:3] = base_xyz + rel_action[:3]
-                absolute_actions.append(abs_action)
+        # Extract base position and rotation
+        base_xyz = current_ee_pose[:3]
+        base_axis_angle = current_ee_pose[3:6]
+        base_quat = Rotation.from_rotvec(base_axis_angle)
+        
+        absolute_actions = []
+        for rel_action in relative_actions:
+            # Position: reference position + relative position
+            abs_xyz = base_xyz + rel_action[:3]
+            # Rotation: reference rotation * relative rotation
+            rel_quat = Rotation.from_rotvec(rel_action[3:6])
+            abs_quat = base_quat * rel_quat
+            abs_axis_angle = abs_quat.as_rotvec()
+            # Gripper state remains unchanged
+            abs_gripper = rel_action[6]
+            abs_action = np.concatenate([abs_xyz, abs_axis_angle, [abs_gripper]])
+            absolute_actions.append(abs_action)
         
         return torch.from_numpy(np.array(absolute_actions)).float()
     

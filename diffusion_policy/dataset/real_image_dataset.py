@@ -20,7 +20,6 @@ class RealImageDataset(BaseImageDataset):
                  val_ratio: float = 0.15,
                  # Add relative action parameters
                  use_relative_action: bool = False,
-                 relative_type: str = "6D",
                  **kwargs):
         
         self.dataset_path = dataset_path
@@ -37,7 +36,6 @@ class RealImageDataset(BaseImageDataset):
         
         # Relative action configuration
         self.use_relative_action = use_relative_action
-        self.relative_type = relative_type
         
         # Disable absolute action if using relative action
         if use_relative_action:

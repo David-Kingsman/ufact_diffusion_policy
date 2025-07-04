@@ -132,10 +132,11 @@ def main():
         except ImportError:
             print("pyrealsense2 not installed")
             return
-    
+
+
     elif camera_type in ["webcam", "gopro"]:
-        # OpenCV for webcam/gopro
-        device_id = int(camera_id) if camera_id.isdigit() else args.camera_address
+        # Always use the camera address for webcam/gopro
+        device_id = args.camera_address
         
         cap = cv2.VideoCapture(device_id)
         if not cap.isOpened():

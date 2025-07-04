@@ -2,7 +2,7 @@
 defaults:
   - _self_
 
-name: real_lift_image_abs
+name: real_lift_image_abs_single_realsense
 dataset_path: data/metaquest_xarm_dataset.zarr
 
 # XARM ROBOT CONFIGURATION

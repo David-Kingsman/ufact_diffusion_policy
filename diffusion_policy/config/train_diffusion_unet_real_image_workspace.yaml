@@ -1,9 +1,9 @@
 defaults:
 - _self_
-- task: real_lift_image_abs
+- task: real_lift_image_abs_single_realsense                  # Task configuration, can be changed to other tasks like real_lift_image_abs, real_lift_image_rel, etc.
 
 # basic configuration
-name: train_diffusion_unet_image
+name: train_diffusion_unet_image                  # Name of the task (need to revised whhen using different tasks)
 _target_: diffusion_policy.workspace.train_diffusion_unet_image_workspace.TrainDiffusionUnetImageWorkspace
 
 task_name: ${name}  
@@ -117,7 +117,7 @@ logging:
   project: xarm_metaquest_diffusion
   resume: true
   mode: online
-  name: ${now:%Y.%m.%d-%H.%M.%S}_real_lift_image_abs
+  name: ${now:%Y.%m.%d-%H.%M.%S}_real_lift_image_abs_single_realsense
   tags:
   - xarm
   - metaquest
@@ -135,15 +135,15 @@ checkpoint:
   save_last_snapshot: false
 
 multi_run:
-  run_dir: data/outputs/${now:%Y.%m.%d}/${now:%H.%M.%S}_real_lift_image_abs
-  wandb_name_base: ${now:%Y.%m.%d-%H.%M.%S}_real_lift_image_abs
+  run_dir: data/outputs/${now:%Y.%m.%d}/${now:%H.%M.%S}_real_lift_image_abs_single_realsense
+  wandb_name_base: ${now:%Y.%m.%d-%H.%M.%S}_real_lift_image_abs_single_realsense
 
 # Hydra configuration for job management
 hydra:
   job:
-    override_dirname: real_lift_image_abs
+    override_dirname: real_lift_image_abs_single_realsense
   run:
-    dir: data/outputs/${now:%Y.%m.%d}/${now:%H.%M.%S}_real_lift_image_abs
+    dir: data/outputs/${now:%Y.%m.%d}/${now:%H.%M.%S}_real_lift_image_abs_single_realsense
   sweep:
-    dir: data/outputs/${now:%Y.%m.%d}/${now:%H.%M.%S}_real_lift_image_abs
+    dir: data/outputs/${now:%Y.%m.%d}/${now:%H.%M.%S}_real_lift_image_abs_single_realsense
     subdir: ${hydra.job.num}

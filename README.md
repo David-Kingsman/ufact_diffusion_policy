@@ -65,7 +65,6 @@ demos_collected/
 
 The collected raw data needs to be converted to [Zarr](https://zarr.dev/) to store the data for training. Change the config in [`post_process_data.py`](./post_process_data.py) to match your data collection setup and execute:
 
-
 ```bash
 python post_process_data.py
 ```
@@ -139,9 +138,15 @@ Policy: DiffusionUnetImagePolicy
 1. (Optional) Refer to `vcamera_server_ip` and `vcamera_server_port` in the task config file and start the corresponding vcamera server
    ```bash
    # launch camera_node
-   python camera_node.py --camera-ref rs_wrist_0 --use-rgb --img-w 640 --img-h 480 --fps 30 --visualization
+   python camera_node.py --camera-ref rs_1 --use-rgb --img-w 640 --img-h 480 --fps 30 --visualization
+
+   # Webcam example
+   python camera_node.py --camera-ref webcam_2 --use-rgb --visualization --img-h 1080 --img-w 1920 --fps 30 --publish-freq 50 --camera-address '/dev/video2'
+# RealSense camera example
+python camera_node.py --camera-ref rs_1 --use-rgb  --visualization --img-h 480 --img-w 640 --fps 30 --publish-freq 50
+
    ```
- 2. Modify [eval.sh](eval.sh) to set the task and model you want to evaluate
+ 1. Modify [eval.sh](eval.sh) to set the task and model you want to evaluate
    and run the command in separate terminals.
 Assuming the training has finished and you have a checkpoint at `data/outputs/blah/checkpoints/latest.ckpt`, launch the evaluation script with:
 

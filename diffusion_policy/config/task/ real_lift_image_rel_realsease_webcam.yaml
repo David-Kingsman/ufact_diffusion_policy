@@ -2,12 +2,11 @@
 defaults:
   - _self_
 
-name: real_lift_image_rel
+name:  real_lift_image_rel_realsease_webcam
 dataset_path: data/metaquest_xarm_dataset.zarr
 
 # required XARM robot configuration
-use_relative_action: true
-relative_type: "6D"  # or "pos"
+use_relative_action: true # relative action mode
 
 # dataset configuration
 dataset:
