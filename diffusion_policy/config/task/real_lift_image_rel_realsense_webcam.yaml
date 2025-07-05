@@ -10,7 +10,6 @@ abs_action: false
 
 # Multi-camera configuration
 camera_names:
-camera_names:
   - agentview0_image
   - agentview1_image
 

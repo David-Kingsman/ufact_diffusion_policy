@@ -249,14 +249,6 @@ class RealImageDataset(BaseImageDataset):
             })
         
         # Image observations (no normalization needed, already in [0,1] range)
-        for cam_key in self.image_keys:
-            normalizer.params_dict[cam_key] = torch.nn.ParameterDict({
-                'min': torch.nn.Parameter(torch.zeros(1), requires_grad=False),
-                'max': torch.nn.Parameter(torch.ones(1), requires_grad=False),
-                'scale': torch.nn.Parameter(torch.ones(1), requires_grad=False),
-                'offset': torch.nn.Parameter(torch.zeros(1), requires_grad=False)
-            })
-        # 兼容性处理：也注册 agentview_image
         normalizer.params_dict['agentview_image'] = torch.nn.ParameterDict({
             'min': torch.nn.Parameter(torch.zeros(1), requires_grad=False),
             'max': torch.nn.Parameter(torch.ones(1), requires_grad=False),
@@ -343,19 +335,16 @@ class RealImageDataset(BaseImageDataset):
         #     },
         #     'action': actions
         # }
-        obs_dict = {}
-        for cam_key in self.image_keys:
-            obs_dict[cam_key] = episode[cam_key][obs_start:obs_end]
-        obs_dict['robot_eef_pose'] = episode['robot_eef_pose'][obs_start:obs_end]
-        obs_dict['robot_joint'] = episode['robot_joint'][obs_start:obs_end]
-        obs_dict['robot_joint_vel'] = episode['robot_joint_vel'][obs_start:obs_end]
-        obs_dict['gripper'] = episode['gripper'][obs_start:obs_end]
-        
         batch = {
-            'obs': obs_dict,
+            'obs': {
+                'agentview_image': episode['agentview_image'][obs_start:obs_end],
+                'robot_eef_pose': episode['robot_eef_pose'][obs_start:obs_end],
+                'robot_joint': episode['robot_joint'][obs_start:obs_end],
+                'robot_joint_vel': episode['robot_joint_vel'][obs_start:obs_end],
+                'gripper': episode['gripper'][obs_start:obs_end]
+            },
             'action': actions
         }
-        print("Batch obs keys:", obs_dict.keys())
         return batch
         
     def get_validation_dataset(self):

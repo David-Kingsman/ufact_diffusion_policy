@@ -22,6 +22,9 @@ for demo in z['data']:
     obs = demo_group['obs']
     actions = demo_group['actions']
     print(f"  actions shape: {actions.shape}")
+    
+    # 输出 obs 下所有 key
+    print("  obs keys:", list(obs.keys()))
 
     # 判断并输出相机图片 shape
     if 'agentview0_image' in obs:
@@ -56,3 +59,5 @@ for demo in z['data']:
         print("obs keys in first demo:", obs_keys)
     else:
         print("No demo found in data group.")
+
+        

@@ -2,7 +2,7 @@ defaults:
 - _self_
 # Task configuration, can be changed to other tasks like real_lift_image_abs, real_lift_image_rel, etc.
 # - task: real_lift_image_rel_single_realsense                 
-- task: real_lift_image_rel_single_realsense
+- task: real_lift_image_rel_realsense_webcam
 
 # basic configuration
 name: train_diffusion_unet_image                  # Name of the task (need to revised whhen using different tasks)
